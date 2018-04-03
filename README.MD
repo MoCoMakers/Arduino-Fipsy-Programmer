@@ -1,4 +1,4 @@
-#Notes
+# Notes
 The GUI in FileChooser.py selects a port and .jed file to send to an Arduino connected by USB.
 
 The Arduino code is under development, but is based off of a working example for the Raspberry PI.
