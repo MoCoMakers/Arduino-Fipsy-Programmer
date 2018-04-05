@@ -11,6 +11,19 @@
 #include <SPI.h>
 
 
+#include <stdarg.h>
+/* Custom printf wrapper */
+void pwrapper(char *fmt, ... ){
+      Serial.println("At Top of pwrapper()");
+       delay(100);
+        char buf[128]; // resulting string limited to 128 chars
+        va_list args;
+        va_start (args, fmt );
+        vsnprintf(buf, 128, fmt, args);
+        va_end (args);
+        Serial.print(buf);
+}
+
 /* Convenient types */
 typedef unsigned char uint8_t;
 typedef unsigned short WORD;
@@ -33,7 +46,7 @@ char JEDEC_SeekNextKeyChar(void);
 uint8_t JEDEC_ReadFuseuint8_t(uint8_t *Fuseuint8_t);
  
 /* General purpose subroutine declarations */
-uint32_t SPI_Transaction(uint8_t Count, void *Data); 
+void SPI_Transaction(uint8_t Count, void *Data); 
 int ErrorMessage(char *ErrorDescription, char *ErrorType);
 // Predefined error messages
 #define ErrorFileNotFound()         ErrorMessage("Unable to open the specified file", "File Error")
@@ -79,9 +92,6 @@ uint8_t SPIBUF_DEFAULT[20] = { 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0
 #define pMachXO2_Operand            (&SPIBuf[1])
 #define pMachXO2_Data               (&SPIBuf[4])
 
-// Macro to complete an SPI transaction of the specified count with the global buffer
-// The global buffer count is set with the parameter, saving coding steps 
-#define MachXO2_SPITrans(c)         { MachXO2_Count = c; SPI_Transaction(MachXO2_Count, SPIBuf); }   
 
 // Flag indicating hardware has been opened and the port is ready
 #define HWIsOpen                    (SPIPort > 0)
@@ -107,9 +117,9 @@ void setup() {
 
   //Set up SPI with Fipsy
   //digitalWrite(SS, HIGH);   
-  pinMode(SS, OUTPUT);
+  //pinMode(SS, OUTPUT);
   SPI.begin ();
-  SPI.setBitOrder(MSBFIRST);
+  //SPI.setBitOrder(MSBFIRST);
   
 }
 
@@ -122,6 +132,7 @@ void loop() {
                 // say what you got:
                 Serial.print("I received: ");
                 Serial.println(incoming);
+                
 
                 if (incoming=="do_check_id"){
                   delay(100);
@@ -130,15 +141,36 @@ void loop() {
                     // Configure SPI connection to module
                     if(!Fipsy_Open()){
                         Serial.println("Error: Could not open SPI port");
-                        return;
+                        delay(1000);
                       }
-                  
+                    Serial.println("Serial Open Return");
+                    delay(1000);
+                    if(!Fipsy_Open()){
+                        Serial.println("Error: Could not open SPI port");
+                        delay(1000);
+                      }
+                    Serial.println("Serial Open Return2");
+                    delay(1000);
                     // Read and print the ids
-                    if(!Fipsy_ReadDeviceID(id)) { Fipsy_Close(); return(-1); };
-                    printf("Device ID = %02X %02X %02X %02X\n\r", id[0], id[1], id[2], id[3]);
+                    if(!Fipsy_ReadDeviceID(id)) { 
+                        //Fipsy_Close(); 
+                        Serial.println("In a close state");
+                        delay(1000);
+                        return -1; 
+                        }
+                     //Serial.printf("Device ID = %02X %02X %02X %02X\n\r", id[0], id[1], id[2], id[3]);
+
+                     Serial.println("Before inital pwrapper");
+                     delay(1000);
+                     
+                     pwrapper("Device ID = %02X %02X %02X %02X\n\r", id[0], id[1], id[2], id[3]);
+                     //Serial.println("Device ID ="+id[0]+" "+id[1]+" "+id[2]+" "+id[3]);
+                     delay(400);
                   
                   //Serial.println("101012");
                 }
+
+                incoming="";
         }
 
  
@@ -156,8 +188,26 @@ void loop() {
 
 }
 
+// Macro to complete an SPI transaction of the specified count with the global buffer
+// The global buffer count is set with the parameter, saving coding steps 
+//#define MachXO2_SPITrans(c)         { MachXO2_Count = c; SPI_Transaction(MachXO2_Count, SPIBuf); }   
+
+void MachXO2_SPITrans(int c){
+
+  MachXO2_Count = c; 
+  Serial.println("Before SPI_Transaction");
+  delay(1000);
+  SPI_Transaction(MachXO2_Count, SPIBuf);
+  Serial.println("After SPI_Transaction");
+  delay(1000);
+  return;
+}
+
 uint32_t Fipsy_Open(void)
  { 
+
+  Serial.println("At Top of Fipsy Open");
+  delay(1000);
   int ret;
   uint8_t mode = 0;
   uint8_t bits = 8;
@@ -176,9 +226,12 @@ uint32_t Fipsy_Open(void)
   pMachXO2_Operand[1] = 0xFF;         
   pMachXO2_Operand[2] = 0xFF;    
   MachXO2_SPITrans(4);
-       
+
+  Serial.println("Above Fipsy Open Return");
+  delay(1000);
+  
   // Return success
-  return(1);
+  return 1;
  }
 
  /* SPI_TRANSACTION completes the data transfer to and/or from the device 
@@ -188,39 +241,42 @@ uint32_t Fipsy_Open(void)
    valid based on the controlled nature of calls to this routine.
 */
 
-uint32_t SPI_Transaction(uint8_t Count, void *Data)   
+void SPI_Transaction(uint8_t Count, void *Data)   
  {
+  String strData;
+  //uint8_t strData[100];
+
+  uint8_t (*ptr)[100];
+
+  ptr=Data;
+  
+  //strData=*(uint8_t*) Data;
+  strData=(*ptr)[0]+"-";
+  strData=strData+(*ptr)[1]+"-";
+  strData=strData+(*ptr)[2]+"-";
+  strData=strData+(*ptr)[3]+"-";
+  strData=strData+(*ptr)[4]+"-";
+  strData=strData+(*ptr)[5]+"-";
+  strData=strData+(*ptr)[6]+"-";
+  strData=strData+(*ptr)[7]+"-";
+  strData=strData+(*ptr)[8]+"-";
+  
+  //strData=(char*) Data;
+  Serial.println("Top of SPI Transaction with data: "+strData);
+  delay(1000);
    SPISettings mySPISettings(400000, MSBFIRST, SPI_MODE0); 
    SPI.beginTransaction(mySPISettings);
    SPI.transfer(&Data, Count);
+   delay(1000);
    SPI.endTransaction();
 
-   /*
-  int ret;
-  // Rx and Tx as the same uint8_t buffer
-  uint8_t *pbRx = Data;
-  uint8_t *pbTx = Data;
-  // Structure of transfer 
-  struct spi_ioc_transfer msg = {
-   .tx_buf = (unsigned long)pbTx,
-   .rx_buf = (unsigned long)pbRx,
-   .len = Count,
-   .delay_usecs = 1,
-   .speed_hz = 400000,
-   .bits_per_word = 8,
-  };
+   //Serial.println("END of SPI Transaction with data: "+strData);
+  //delay(400);
 
-  // Complete the transfer
-  ret = ioctl(SPIPort, SPI_IOC_MESSAGE(1), &msg);
+  Serial.println("Still at END");
+  delay(1000);
 
-  
-
-  // Return result 
-  return((ret < 1) ? 0 : 1);   
-
-   */
-
-   return 1;
+   return;
  }
 
  /* FIPSY_READDEVICEID retrieves the device identification number from the
@@ -231,24 +287,37 @@ uint32_t SPI_Transaction(uint8_t Count, void *Data)
 */
 
 uint32_t Fipsy_ReadDeviceID(uint8_t *DeviceID)
- {
+ { 
+  Serial.println("Beginning Device ID Read");
+  delay(300);
   // All exported library functions get this check of hardware and arguments    
   //if(!HWIsOpen) return(ErrorNotOpen());
   if(DeviceID == NULL){
       Serial.println("Error: Data pointer provided is NULL");
-      return(-1);
+      delay(100);
+      return -1;
     }
     
   // Construct the command  
   SPIBUFINIT;
   MachXO2_Command = MACHXO2_CMD_READ_DEVICEID;
+  
+  Serial.println("Before transaction in Read");
+  delay(1000);
+
   MachXO2_SPITrans(8);
+
+  Serial.println("Before memcpy");
+  delay(1000);
   
   // Get the data 
   memcpy(DeviceID, pMachXO2_Data, 4);
+
+  Serial.println("Bottom of ReadDeviceID");
+  delay(1000);
       
   // Return success
-  return(1);
+  return 1;
  }
 
 
@@ -263,5 +332,5 @@ uint32_t Fipsy_Close(void)
   SPIPort = -1;
  
   // Return success
-  return(1);
+  return 1;
  }
