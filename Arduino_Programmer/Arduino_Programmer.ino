@@ -167,7 +167,8 @@ void loop() {
                         //Fipsy_Close(); 
                         Serial.println("In a close state");
                         delay(1000);
-                        return -1; 
+                        return;
+                        //return -1; 
                         }
                      //Serial.printf("Device ID = %02X %02X %02X %02X\n\r", id[0], id[1], id[2], id[3]);
 
@@ -477,7 +478,8 @@ uint32_t Fipsy_EraseAll(void)
     if(timeout > 5000) {
       Serial.println("Timed out waiting for FPGA busy");
       delay(100);
-      return -1;
+      return;
+      //return -1;
       }
 
     // Go read the busy bit
@@ -580,7 +582,8 @@ uint32_t Fipsy_WriteConfiguration()
                   isDone=true;
                   Serial.println("end_connection");
                   delay(1000);
-                  return -1;
+                  return;
+                  //return -1;
                 }
                 else if (inString=="show_success"){
                   isDone=true;
@@ -1089,4 +1092,3 @@ byte fgetcharacter(void){
 
   return incomingByte;
  }
-
