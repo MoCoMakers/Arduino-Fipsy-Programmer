@@ -1,8 +1,8 @@
 # Getting Started
 
 ### Install Python 3.1+
-`pip install tk`<br>
-`pip install pyserial`
+Install the requirements, you will need tk for the GUI<br>
+`pip install -r requirements.txt`
 
 ### Install Arduino IDE
 Once loaded, plugin your Arduino, and load 'Arduino_Programmer/Arduino_Programmer.ino' - then upload this. Notice that you can override pin numbers SS, DATAOUT, DATAIN, and SPICLOCK

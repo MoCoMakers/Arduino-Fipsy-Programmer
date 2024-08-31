@@ -121,7 +121,7 @@ def check_id_callback():
 
     device_id=""
     while not device_id:
-        arduinoSerialData.write("do_check_id")
+        arduinoSerialData.write("do_check_id\n".encode("ascii"))
         sleep(1)
         data = arduinoSerialData.readline()[:-2] #the last bit gets rid of the new-line chars
         if data:
