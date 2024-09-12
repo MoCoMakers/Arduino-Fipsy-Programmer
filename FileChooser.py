@@ -6,15 +6,19 @@ from tkinter import *
 import serial
 import serial.tools.list_ports
 
-from time import sleep
+from time import sleep, time
+
+import binascii
 
 class customSerial(serial.Serial):
     def __int__(self):
         super().__init__(self)
     def write(self, string_val):
         try:
-            # new_val = string_val.decode('UTF-8')
-            new_val = string_val.encode('utf-16be')
+            new_val = string_val.encode('ascii', 'ignore')
+            if len(new_val)>1:
+                if new_val[-1]!=b'\n':
+                    new_val = new_val+b'\n'
         except:
             new_val = string_val
 
@@ -120,12 +124,16 @@ def check_id_callback():
         return
 
     device_id=""
-    while not device_id:
-        arduinoSerialData.write("do_check_id\n".encode("ascii"))
+    device_found = False
+    # Set timeout time
+    end = time() + 10
+    while not device_id and time() < end:
+        arduinoSerialData.write("do_check_id\n")
         sleep(1)
         data = arduinoSerialData.readline()[:-2] #the last bit gets rid of the new-line chars
+        print(data)
         if data:
-            if data=="I received: do_check_id":
+            if data==b"I received: do_check_id":
                 print("Hit on: do_check_id")
 
                 count=0
@@ -133,15 +141,26 @@ def check_id_callback():
                 while not device_id:
                     sleep(1)
                     data = arduinoSerialData.readline()[:-2]
-                    print("Now showing: "+data)
+                    print("Now showing: "+str(data))
                     if data:
-                        #device_id=data
-                        print("Device ID is: "+device_id)
+                        if b"Device ID = " in data:
+                            device_id=data
+                            print("Device ID is: "+str(device_id))
+                            device_found = True
+                        else:
+                            print("Response: "+str(data))
 
-                    count=count+1;
+                    count=count+1
                     if(count>15):
                         device_id="Time's up"
-
+    #Trigger terminate
+    arduinoSerialData.write("terminate_connect")
+    
+    if not device_found:
+        from tkinter import messagebox as tkMessageBox
+        Tk().withdraw()
+        tkMessageBox.showinfo("Connection Timeout","No Fipsy dected on device. Check wiring and connections.")
+        return
 
 
 def erase_device_callback():
@@ -151,7 +170,6 @@ def erase_device_callback():
         global port_selected
         port_name = available_ports[port_selected]
         print("Using port: "+ port_name)
-        #arduinoSerialData = customSerial(port_name, 115200, timeout=.1)
 
         arduinoSerialData = customSerial()
         arduinoSerialData.port = port_name
@@ -161,8 +179,6 @@ def erase_device_callback():
         #arduinoSerialData.setRTS(False)
         arduinoSerialData.open()
 
-
-
     except:
         from tkinter import messagebox as tkMessageBox
         Tk().withdraw()
@@ -170,27 +186,43 @@ def erase_device_callback():
         return
 
     device_id=""
-    while not device_id:
-        arduinoSerialData.write("do_erase_device")
+    # Set end time
+    end = time()+30
+    erase_success = False
+    arduinoSerialData.write("do_pass")
+    arduinoSerialData.write("do_erase_device")
+    while not erase_success and time() < end:
         sleep(1)
         data = arduinoSerialData.readline()[:-2] #the last bit gets rid of the new-line chars
+        print(data)
         if data:
-            if data=="I received: do_erase_device":
+            if data==b"I received: do_erase_device":
                 print( "Hit on: do_erase_device")
 
                 count=0
 
-                while not device_id:
+                while not erase_success:
                     sleep(1)
                     data = arduinoSerialData.readline()[:-2]
-                    print("Now showing: "+data)
+                    print("Now showing: "+str(data))
                     if data:
-                        #device_id=data
-                        print("Device ID is: "+device_id)
+                        if b"Device was successfully erased" in data:
+                            erase_success = True
+                            break
+                        else:
+                            print("Response: "+str(data))
 
                     count=count+1
                     if(count>15):
-                        device_id="Time's up"
+                        break
+    #Trigger terminate
+    arduinoSerialData.write("terminate_connect")
+
+    if not erase_success:
+        from tkinter import messagebox as tkMessageBox
+        Tk().withdraw()
+        tkMessageBox.showinfo("Failed to connect to Arduino","Failed to connect to Arduino. Did you select a port? Can Arduino IDE detect the device?")
+        return
 
 
 
@@ -201,7 +233,6 @@ def program_device_callback():
         global port_selected
         port_name = available_ports[port_selected]
         print("Using port: "+ port_name)
-        #arduinoSerialData = customSerial(port_name, 115200, timeout=.1)
 
         arduinoSerialData = customSerial()
         arduinoSerialData.port = port_name
@@ -231,7 +262,7 @@ def program_device_callback():
                 sleep(1)
                 data = arduinoSerialData.readline()[:-2] #the last bit gets rid of the new-line chars
                 if data:
-                    if data=="I received: do_program_device":
+                    if data==b"I received: do_program_device":
                         print("Hit on: do_program_device")
 
                         count=0
@@ -239,20 +270,20 @@ def program_device_callback():
                         while True:
                             data = arduinoSerialData.readline()[:-2]
                             if data:
-                                if data=="check_JEDEC_file":
+                                if data==b"check_JEDEC_file":
+                                    print("Starting: check of JEDEC file")
                                     if(do_check_JEDEC_file(input_file,arduinoSerialData)):
-                                        print("Successful check")
+                                        print("Successful check. Device programmed.")
                                     else:
                                         print("Failed JEDEC File check")
-
                                     return
-                                if data=="getc":
+                                if data==b"getc":
                                     count=count+1
                                     myChar=input_file.read(1)
                                     arduinoSerialData.write(myChar)
                                     print("Fetching a character: "+str(myChar))
                                     print("Showing count"+str(count))
-                                elif data=="end_file_connection" or data=="end_connection":
+                                elif data==b"end_file_connection" or data==b"end_connection":
                                     print("Received end of connection")
                                     return
                                 else:
@@ -268,13 +299,13 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
     key=""
     while(True):
         key = input_file.read(1)
-        if (key!="\x02") and (key!=''):
+        if (key!=b"\x02") and (key!=b''):
             pass
         else:
             break
 
-    if key=="":
-        cast_alert("File format is not valid for JEDEC")
+    if key==b"":
+        cast_alert("File format is not valid for JEDEC. L1")
         arduinoSerialData.write("failed_JEDEC_format")
         return False
     else:
@@ -284,18 +315,18 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
             # Look for Q
             key, input_file=JEDEC_SeekNextKeyChar(input_file, arduinoSerialData)
             if key:
-                if key=='Q':
+                if key==b'Q':
                     # Get qualifier
                     keyq=input_file.read(1)
                     print("Looking at keyq of:"+str(keyq))
-                    if keyq=='F':
+                    if keyq==b'F':
                         break
                     else:
                         #Ignore 'Q' characters that don't have the 'F' qualifier
                         pass
             else:
                 #End of File
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L2")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
 
@@ -307,11 +338,11 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
 
         while(True):
             key=input_file.read(1)
-            if key=='':
-                cast_alert("File format is not valid for JEDEC")
+            if key==b'':
+                cast_alert("File format is not valid for JEDEC. L3")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
-            if key!='*':
+            if key!=b'*':
                 addr_digits=addr_digits+1
             else:
                 break
@@ -320,15 +351,15 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         # Look for the key character - this step is probably overkill here, but for completeness
 
         key, input_file=JEDEC_SeekNextNonWhitespace(input_file, arduinoSerialData)
-        if key=="":
-            cast_alert("File format is not valid for JEDEC")
+        if key==b"":
+            cast_alert("File format is not valid for JEDEC. L4")
             arduinoSerialData.write("failed_JEDEC_format")
             return False
 
-        while(key!='E'):
+        while(key!=b'E'):
             key, input_file = JEDEC_SeekNextKeyChar(input_file, arduinoSerialData)
             if not key:
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L5")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
 
@@ -337,10 +368,9 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         # We are now at the feature row bits, pointed at the fuse data
         # Read the data into the local arrays
         for i in range(0,8):
-
-            FuseByte, input_file,is_success = JEDEC_ReadFuseByte(input_file)
+            FuseByte, input_file, is_success = JEDEC_ReadFuseByte(input_file)
             if not is_success:
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L6")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
             featurerow[i]=FuseByte
@@ -351,20 +381,27 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         for i in range(0,2):
             FuseByte, input_file,is_success = JEDEC_ReadFuseByte(input_file)
             if not is_success:
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L7")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
             feabits[i]=FuseByte
 
-        #  If the Slave SPI port is disabled, warn the user and exit. This needs to be enabled to reprogram the Fipsy
+        # If the Slave SPI port is disabled, warn the user and exit. This needs to be enabled to reprogram the Fipsy
         # This check checks for a nessesary feature of SPI_SLAVE_PORT being enabled, but changing this one value
         # is not sufficient to enable the SPI port. This should be done from Lattice Diamond's Spreadsheet view to ensure success.
 
-        #print("Testing featbit[1] of "+str(feabits[1].encode('hex')) +" "+ str(type(feabits[1])))
-
         #Turn bytes to type int, which in Python are able to do the bitwise & opperation
         #If the key bit is a 1 - then the & comparision will return 0, and fail - a sign that SPI_SLAVE_PORT is disabled
-        if int(feabits[1].encode('hex'),8) & int('\x40'.encode('hex'),8):
+        SPI_SLAVE_PORT_hex = binascii.hexlify(feabits[1]).decode('ascii')
+        SAFE_SPI_SLVE_PORT_to_ascii = "20"
+        print("SPI safe hex: "+str(SAFE_SPI_SLVE_PORT_to_ascii)+ " and SPI_SLAVE_PORT hex: " + str(SPI_SLAVE_PORT_hex))
+        print(str(featurerow))
+        print(str(feabits))
+        has_valid_SPI_SLAVE_PORT_ENABLE = SPI_SLAVE_PORT_hex == SAFE_SPI_SLVE_PORT_to_ascii
+
+        # IN Python 2 it was - if (int(feabits[1].encode('hex'),8) & int('\x40'.encode('hex'),8)):
+        # TODO: This might need an improvment in documentation
+        if not has_valid_SPI_SLAVE_PORT_ENABLE:
             cast_alert("Failed to detect SPI_SLAVE_PORT enabled. Enable this in Lattice Diamond's spreadsheet view.")
             arduinoSerialData.write("failed_JEDEC_format")
             return False
@@ -372,22 +409,22 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         input_file.seek(0)
 
         # Read the file characters until we find the starting STX (CTRL-B, 0x02)
-
         while(True):
             key = input_file.read(1)
-            if (key!="\x02") and (key!=''):
+            print("Key is:"+str(key))
+            if (key!=b"\x02") and (key!=b''):
                 pass
             else:
                 break
-        if key=="":
-            cast_alert("File format is not valid for JEDEC")
+        if key==b"":
+            cast_alert("File format is not valid for JEDEC. L8")
             arduinoSerialData.write("failed_JEDEC_format")
             return False
 
         # Next look for the fuse table specifically
         while(True):
             key, input_file = JEDEC_SeekNextKeyChar(input_file, arduinoSerialData)
-            if key=='L' or key=='':
+            if key==b'L' or key==b'':
                 break
             else:
                 pass
@@ -406,23 +443,32 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         # Note that any EOF would also drop out here
 
         for i in range(0,addr_digits):
-            if input_file.read(1) != '0':
-                cast_alert("File format is not valid for JEDEC")
+            if input_file.read(1) != b'0':
+                cast_alert("File format is not valid for JEDEC. L9")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
 
 
         #cast_alert("Success so far")
 
-
         # The address is good and is zero, so clear the address in the device
         arduinoSerialData.write("clear_the_address")
         print("Casting: clear_the_address")
         data=""
-        while True:
+        end = time() + 30
+        has_cleared = False
+        while True and time() < end:
             data = arduinoSerialData.readline()[:-2]
-            if data and data=="address_cleared":
+            print(data)
+            if data and data==b"address_cleared":
+                has_cleared = True
                 break
+            sleep(0.1)
+
+        if not has_cleared:
+            cast_alert("Programming Can't Complete. Timing Execution Error? Please try again.")
+            return False
+
 
         #Make sure the consecutive write statements don't appear as one string
         sleep(0.1)
@@ -436,7 +482,7 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         arduinoSerialData.write("setup_increment_command")
         while True:
             data = arduinoSerialData.readline()[:-2]
-            if data and data=="increment_declared":
+            if data and data==b"increment_declared":
                 break
 
         transaction_data_chunks=[]
@@ -446,7 +492,7 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
             # Get the first byte and check that we are not at the delimiter
             FuseByte, input_file,is_success = JEDEC_ReadFuseByte(input_file)
             if not is_success:
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L10")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
             # If we did not get the delimiter, this should be a valid row
@@ -457,7 +503,7 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
                 for i in range(1,16):
                     FuseByte, input_file,is_success = JEDEC_ReadFuseByte(input_file)
                     if not is_success:
-                        cast_alert("File format is not valid for JEDEC")
+                        cast_alert("File format is not valid for JEDEC. L11")
                         arduinoSerialData.write("failed_JEDEC_format")
                         return False
                     chunk.append(FuseByte)
@@ -466,17 +512,17 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         print("At chunking")
         count=1
         for chunk in transaction_data_chunks:
-            arduinoSerialData.write("do_chunk\n")  #Arduino's Serial.readStringUntil('\n');  needs a newline character, or it will wait until timeout
+            arduinoSerialData.write("do_chunk")  #Arduino's Serial.readStringUntil('\n');  needs a newline character, or it will wait until timeout
 
             while True:
                 print("Waiting for arduino")
                 data = arduinoSerialData.readline()[:-2]
-                if data and data=="next_chunk":
+                if data and data==b"next_chunk":
                     print("At next_chunk")
                     print("At chunk: "+str(count)+" of "+str(len(transaction_data_chunks))+" - "+str(((count*1.0)/len(transaction_data_chunks))*100)+"%")
                     count=count+1
                     break
-                if data and data=="do_chunk_recieved":
+                if data and data==b"do_chunk_recieved":
                     print("do_chunk_recieved")
                     for sendbyte in chunk:
                         arduinoSerialData.write(sendbyte)
@@ -508,15 +554,15 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
         #if((key = JEDEC_SeekNextNonWhitespace()) == 0) EXIT_FILEFORMATERROR;
 
         if not key:
-            cast_alert("File format is not valid for JEDEC")
+            cast_alert("File format is not valid for JEDEC. L12")
             arduinoSerialData.write("failed_JEDEC_format")
             return False
 
         #  Look for the key character
-        while(key!='E'):
+        while(key!=b'E'):
             key, input_file = JEDEC_SeekNextKeyChar(input_file, arduinoSerialData)
             if not key:
-                cast_alert("File format is not valid for JEDEC")
+                cast_alert("File format is not valid for JEDEC. L13")
                 arduinoSerialData.write("failed_JEDEC_format")
                 return False
 
@@ -546,7 +592,7 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
 
         while True:
             data = arduinoSerialData.readline()[:-2]
-            if data and data=="do_program_done_complete":
+            if data and data==b"do_program_done_complete":
                 print("Do data done complete")
                 break
             else:
@@ -566,6 +612,8 @@ def do_check_JEDEC_file(input_file, arduinoSerialData):
             return False
 
         # If we got here, all went ok, return success
+        #Trigger terminate
+        arduinoSerialData.write("terminate_connect")
         return True
 
 """
@@ -580,7 +628,7 @@ def Fipsy_LoadConfiguration(arduinoSerialData):
     arduinoSerialData.write("do_load_configuration")
     while True:
         data = arduinoSerialData.readline()[:-2]
-        if data and data=="do_load_configuration_complete":
+        if data and data==b"do_load_configuration_complete":
             print("Load configuration complete")
             break
         else:
@@ -633,26 +681,30 @@ def Fipsy_WriteFeatures(featurerow, feabits, arduinoSerialData):
     if not featurerow or not feabits:
         return False
 
+    # Send Feature Row
     arduinoSerialData.write("send_feature_bits")
 
     while True:
         data = arduinoSerialData.readline()[:-2]
-        if data and data=="received_send_feature_bits":
+        if data and data==b"received_send_feature_bits":
             for x in range(0,8):
                 sendbyte=featurerow[x]
+                print("Sending feature byte: "+str(sendbyte))
                 arduinoSerialData.write(sendbyte)
             print("Feature bits sent")
             break
         else:
             print("Message received: "+str(data))
 
+    # Send FeaBits
     arduinoSerialData.write("send_feabits")
 
     while True:
         data = arduinoSerialData.readline()[:-2]
-        if data and data =="received_send_feabits":
+        if data and data == b"received_send_feabits":
             for x in range(0,2):
                 sendbyte=feabits[x]
+                print("Sending feabits: "+str(sendbyte))
                 arduinoSerialData.write(sendbyte)
             print("Feabits sent")
             break
@@ -697,9 +749,9 @@ def JEDEC_SeekNextKeyChar(input_file, arduinoSerialData):
     # Look for end of field, point to start of next field
     while(True):
         key=input_file.read(1)
-        if key=="":
+        if key==b"":
             return False
-        if key=="*":
+        if key==b"*":
             break
 
     # Pull white space until an actual character is reached
@@ -727,9 +779,9 @@ most control characters, including the JEDEC file start and end STX/EOT.
 def JEDEC_SeekNextNonWhitespace(input_file, arduinoSerialData):
     while(True):
         key=input_file.read(1)
-        if key=="":
+        if key==b"":
             return False, input_file
-        if key<=' ' or key=='*' or key=='\r' or key=='\t' or key=='\n' or key=='\x0D' or key=='\x0A' or key=='\x2A' or key.isspace():
+        if key<=b' ' or key==b'*' or key==b'\r' or key==b'\t' or key==b'\n' or key==b'\x0D' or key==b'\x0A' or key==b'\x2A' or key.isspace():
             pass
         else:
             #print("declaring a nonwhite character of: "+str(key) + str(type(key)) + str(len(key)))
@@ -802,26 +854,25 @@ def JEDEC_ReadFuseByte(input_file):
     print("doing fuse keys")
     while(len(byteArray)<8):
         key=input_file.read(1)
-        #key, input_file = JEDEC_SeekNextNonWhitespace(input_file, '')
-        print("Looking at key: "+str(key))
-        if key=="":
+        if key==b"":
             is_success=False
             print("Returning EOF")
             return False, input_file, is_success
-        #print("Showing key: "+str(key.encode('hex')))
         # Record valid characters
-        if key=="0":
+        if key==b"0":
             byteArray.append('\x00')
-        elif key=="1":
+        elif key==b"1":
             byteArray.append('\x01')
         # If delimiter found, return it
-        elif key=='*':
+        elif key==b'*':
             print("Returning delimiter - *")
             is_success=True # This notes the end of a row
             return '*', input_file, is_success
         else:
             print("Looking at special key:"+str(key)+".")
             #return key, input_file, False
+    
+    print(byteArray)
 
     if byteArray[0]=='\x01':
         FuseByte= FuseByte+128
@@ -840,8 +891,10 @@ def JEDEC_ReadFuseByte(input_file):
     if byteArray[7]=='\x01':
         FuseByte= FuseByte+1
 
+    print("FuseByte After Collapse: "+str(FuseByte))
+
     #turn int to byte character
-    FuseByte=chr(FuseByte)
+    FuseByte=bytes([FuseByte])
     is_success=True
     return FuseByte, input_file, is_success
 

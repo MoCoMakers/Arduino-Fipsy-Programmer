@@ -493,7 +493,7 @@ uint32_t Fipsy_EraseAll(void)
   // Set flag indicating we has successfully erased the FPGA
   FPGAIsErased = 1;
 
-  Serial.println("Device was successfully ereased");
+  Serial.println("Device was successfully erased");
   delay(100);
   
   // Return success
@@ -555,7 +555,8 @@ uint32_t Fipsy_WriteConfiguration()
     Serial.println("Error: The FPGA must be erased to program");
       delay(100);
       return -1;
-    }                        
+  }
+  Serial.println("Device is erased and ready for programming.");              
 
   // If we are even about to configure the part, let's clear this flag here and 
   // so indicate that we tried to program the part and should erase it again before
@@ -597,7 +598,10 @@ uint32_t Fipsy_WriteConfiguration()
                   SPIBUFINIT;
                   MachXO2_Command = MACHXO2_CMD_INIT_ADDRESS;
                   MachXO2_SPITrans(4);
+
                   Serial.println("address_cleared");
+                  // Fix timing issue on hosts b'I received: clear_the_address'
+                  delay(1000);
                 }
                 else if(inString=="setup_increment_command"){
                   // Setup the write and increment command
@@ -697,8 +701,16 @@ uint32_t Fipsy_WriteConfiguration()
                   // Wait for what is suppose to be a very fast configuration
                  delay(100);
                   Serial.println("do_load_configuration_complete");
+                } 
+                else if (inString=="terminate_connect") {
+                  Serial.println("triggered_end_connection");
+                  delay(1000);
+                  return -1;
+                } 
+                else if (inString=="do_pass") {
+                  return;
                 }
-                else{
+                else {
                   isDone=true;
                   Serial.println("end_connection");
                   delay(1000);
